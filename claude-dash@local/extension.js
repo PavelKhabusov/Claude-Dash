@@ -143,7 +143,6 @@ const ClaudeDashButton = GObject.registerClass({
     setPending(sessionId, project, cwd, toolName, toolInput, message, state) {
         if (!sessionId) sessionId = 'default';
         const normState = (state === 'busy' || state === 'urgent' || state === 'idle') ? state : 'urgent';
-        const prev = this._pending.get(sessionId);
         this._pending.set(sessionId, {
             project: project || (cwd ? cwd.split('/').pop() : 'claude'),
             cwd: cwd || '',
@@ -153,11 +152,6 @@ const ClaudeDashButton = GObject.registerClass({
             state: normState,
             ts: Date.now(),
         });
-        // Per-session urgent transitions also deserve a sound — _maybePlayTransitionSound
-        // only catches the GLOBAL transition, which misses 2nd+ urgent in the same window.
-        if (normState === 'urgent' && (!prev || prev.state !== 'urgent') &&
-            this._settings.sound_enabled && !this._settings.auto_approve)
-            this._playSound('message');
         this._rebuildMenu();
         this._updateIcon();
     }
@@ -325,9 +319,9 @@ const ClaudeDashButton = GObject.registerClass({
 
     _maybePlayTransitionSound(oldState, newState) {
         if (!this._settings.sound_enabled) return;
-        if (newState === 'urgent' && oldState !== 'urgent' && !this._settings.auto_approve) {
-            this._playSound('message');
-        } else if (newState === 'done' && (oldState === 'busy' || oldState === 'urgent')) {
+        // Attention sound lives in requestApproval (per-approval granularity);
+        // here we only cover the "Claude just finished" completion cue.
+        if (newState === 'done' && (oldState === 'busy' || oldState === 'urgent')) {
             this._playSound('complete');
         }
     }
