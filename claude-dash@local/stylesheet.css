@@ -82,3 +82,22 @@
     background-color: rgba(255, 255, 255, 0.12);
     color: #ffffff;
 }
+
+.claude-approval-row {
+    spacing: 8px;
+    padding: 2px 8px;
+}
+
+.claude-approval-button {
+    padding: 6px 12px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: bold;
+    text-align: center;
+}
+
+.claude-approval-button:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}

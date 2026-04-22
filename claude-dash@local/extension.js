@@ -449,13 +449,26 @@ const ClaudeDashButton = GObject.registerClass({
                         : `🔔  ${info.tool || 'request'}`;
                     this.menu.addMenuItem(this._makeLabelItem(line, 'claude-menu-tool'));
 
-                    const allow = new PopupMenu.PopupMenuItem('  ✅ Allow');
-                    allow.connect('activate', () => this._respondApproval(rid, 'allow'));
-                    this.menu.addMenuItem(allow);
-
-                    const deny = new PopupMenu.PopupMenuItem('  ❌ Deny');
-                    deny.connect('activate', () => this._respondApproval(rid, 'deny'));
-                    this.menu.addMenuItem(deny);
+                    const row = new PopupMenu.PopupBaseMenuItem({ reactive: false, can_focus: false });
+                    const box = new St.BoxLayout({ x_expand: true, style_class: 'claude-approval-row' });
+                    const allow = new St.Button({
+                        label: '✅  Allow',
+                        x_expand: true,
+                        can_focus: true,
+                        style_class: 'claude-approval-button',
+                    });
+                    allow.connect('clicked', () => this._respondApproval(rid, 'allow'));
+                    const deny = new St.Button({
+                        label: '❌  Deny',
+                        x_expand: true,
+                        can_focus: true,
+                        style_class: 'claude-approval-button',
+                    });
+                    deny.connect('clicked', () => this._respondApproval(rid, 'deny'));
+                    box.add_child(allow);
+                    box.add_child(deny);
+                    row.add_child(box);
+                    this.menu.addMenuItem(row);
                 }
 
                 const sessions = data.sessions.sort((a, b) => {
