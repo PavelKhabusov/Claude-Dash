@@ -86,10 +86,15 @@ const ClaudeDashButton = GObject.registerClass({
             this._settings.approvals_enabled = true;
         if (typeof this._settings.auto_approve !== 'boolean')
             this._settings.auto_approve = false;
+        if (typeof this._settings.sound_enabled !== 'boolean')
+            this._settings.sound_enabled = true;
+
+        this._overallState = 'empty';
 
         this._iconIdle = Gio.icon_new_for_string(extensionPath + '/icons/claude-idle.svg');
         this._iconBusy = Gio.icon_new_for_string(extensionPath + '/icons/claude-busy.svg');
         this._iconActive = Gio.icon_new_for_string(extensionPath + '/icons/claude-active.svg');
+        this._iconDone = Gio.icon_new_for_string(extensionPath + '/icons/claude-done.svg');
 
         const box = new St.BoxLayout({ style_class: 'claude-indicator-box' });
         this._icon = new St.Icon({
@@ -218,20 +223,53 @@ const ClaudeDashButton = GObject.registerClass({
         return `${hh}:${mm}`;
     }
 
-    _updateIcon() {
-        let urgent = this._approvals.size;
-        let activity = 0;
+    _computeState() {
+        if (this._approvals.size > 0) return 'urgent';
+        let hasBusy = false, hasIdle = false;
         for (const v of this._pending.values()) {
-            if (v.state === 'urgent') urgent++;
-            else activity++;
+            if (v.state === 'urgent') return 'urgent';
+            if (v.state === 'busy') hasBusy = true;
+            else if (v.state === 'idle') hasIdle = true;
+        }
+        if (hasBusy) return 'busy';
+        if (hasIdle) return 'done';
+        return 'empty';
+    }
+
+    _playSound(name) {
+        try {
+            GLib.spawn_command_line_async(`canberra-gtk-play -i ${name}`);
+        } catch (_e) {}
+    }
+
+    _maybePlayTransitionSound(oldState, newState) {
+        if (!this._settings.sound_enabled) return;
+        if (newState === 'urgent' && oldState !== 'urgent' && !this._settings.auto_approve) {
+            this._playSound('message');
+        } else if (newState === 'done' && (oldState === 'busy' || oldState === 'urgent')) {
+            this._playSound('complete');
+        }
+    }
+
+    _updateIcon() {
+        const newState = this._computeState();
+        if (newState !== this._overallState) {
+            this._maybePlayTransitionSound(this._overallState, newState);
+            this._overallState = newState;
         }
 
-        if (urgent > 0) {
+        const urgentCount = this._approvals.size +
+            [...this._pending.values()].filter(v => v.state === 'urgent').length;
+
+        if (newState === 'urgent') {
             this._icon.set_gicon(this._iconActive);
-            this._badge.set_text(String(urgent));
+            this._badge.set_text(String(urgentCount));
             this._badge.show();
-        } else if (activity > 0) {
+        } else if (newState === 'busy') {
             this._icon.set_gicon(this._iconBusy);
+            this._badge.hide();
+        } else if (newState === 'done') {
+            this._icon.set_gicon(this._iconDone);
             this._badge.hide();
         } else {
             this._icon.set_gicon(this._iconIdle);
@@ -360,6 +398,16 @@ const ClaudeDashButton = GObject.registerClass({
             saveSettings(this._settings);
         });
         this.menu.addMenuItem(toggleAuto);
+
+        const toggleSound = new PopupMenu.PopupSwitchMenuItem(
+            'Play sounds',
+            this._settings.sound_enabled
+        );
+        toggleSound.connect('toggled', (_item, state) => {
+            this._settings.sound_enabled = state;
+            saveSettings(this._settings);
+        });
+        this.menu.addMenuItem(toggleSound);
 
         if (this._pending.size > 0 || this._approvals.size > 0) {
             const clearAll = new PopupMenu.PopupMenuItem('Clear all');
