@@ -143,6 +143,7 @@ const ClaudeDashButton = GObject.registerClass({
     setPending(sessionId, project, cwd, toolName, toolInput, message, state) {
         if (!sessionId) sessionId = 'default';
         const normState = (state === 'busy' || state === 'urgent' || state === 'idle') ? state : 'urgent';
+        const prev = this._pending.get(sessionId);
         this._pending.set(sessionId, {
             project: project || (cwd ? cwd.split('/').pop() : 'claude'),
             cwd: cwd || '',
@@ -152,6 +153,11 @@ const ClaudeDashButton = GObject.registerClass({
             state: normState,
             ts: Date.now(),
         });
+        // Per-session urgent transitions also deserve a sound — _maybePlayTransitionSound
+        // only catches the GLOBAL transition, which misses 2nd+ urgent in the same window.
+        if (normState === 'urgent' && (!prev || prev.state !== 'urgent') &&
+            this._settings.sound_enabled && !this._settings.auto_approve)
+            this._playSound('message');
         this._rebuildMenu();
         this._updateIcon();
     }
@@ -177,6 +183,8 @@ const ClaudeDashButton = GObject.registerClass({
             ts: Date.now(),
         });
         this._pushHistory('request', projName, toolName, toolInput);
+        if (this._settings.sound_enabled && !this._settings.auto_approve)
+            this._playSound('message');
         this._rebuildMenu();
         this._updateIcon();
     }
@@ -509,6 +517,11 @@ const ClaudeDashButton = GObject.registerClass({
         toggleAuto.connect('toggled', (_item, state) => {
             this._settings.auto_approve = state;
             saveSettings(this._settings);
+            if (state) {
+                // Unblock every currently pending approval request right away.
+                for (const rid of [...this._approvals.keys()])
+                    this._respondApproval(rid, 'allow');
+            }
         });
         settings.menu.addMenuItem(toggleAuto);
 
