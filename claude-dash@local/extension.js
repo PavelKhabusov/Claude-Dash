@@ -4,6 +4,7 @@ import GLib from 'gi://GLib';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
+import Soup from 'gi://Soup';
 
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -68,6 +69,26 @@ function saveSettings(obj) {
     }
 }
 
+// Approach adapted from Haletran/claude-usage-extension: read Claude Code's
+// OAuth token and hit Anthropic's (undocumented, beta) usage endpoint.
+function readOAuthToken() {
+    const base = GLib.getenv('CLAUDE_CONFIG_DIR') || GLib.build_filenamev([GLib.get_home_dir(), '.claude']);
+    const path = GLib.build_filenamev([base, '.credentials.json']);
+    try {
+        const [ok, contents] = GLib.file_get_contents(path);
+        if (!ok) return null;
+        const data = JSON.parse(new TextDecoder().decode(contents));
+        return data?.claudeAiOauth?.accessToken || null;
+    } catch (_e) {
+        return null;
+    }
+}
+
+function normalizePercent(v) {
+    if (typeof v !== 'number') return null;
+    return v <= 1.01 ? Math.round(v * 100) : Math.round(v);
+}
+
 // Every load uses a fresh GTypeName so the extension can be reloaded in
 // place without triggering "type already registered" errors.
 const _GTYPE_SUFFIX = Date.now().toString(36);
@@ -88,8 +109,13 @@ const ClaudeDashButton = GObject.registerClass({
             this._settings.auto_approve = false;
         if (typeof this._settings.sound_enabled !== 'boolean')
             this._settings.sound_enabled = true;
+        if (typeof this._settings.usage_enabled !== 'boolean')
+            this._settings.usage_enabled = true;
 
         this._overallState = 'empty';
+        this._usage = null;
+        this._usageTimerId = 0;
+        this._soupSession = null;
 
         this._iconIdle = Gio.icon_new_for_string(extensionPath + '/icons/claude-idle.svg');
         this._iconBusy = Gio.icon_new_for_string(extensionPath + '/icons/claude-busy.svg');
@@ -242,6 +268,53 @@ const ClaudeDashButton = GObject.registerClass({
         } catch (_e) {}
     }
 
+    startUsagePolling() {
+        if (!this._settings.usage_enabled) return;
+        this._fetchUsage();
+        if (this._usageTimerId) return;
+        this._usageTimerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 600, () => {
+            this._fetchUsage();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    stopUsagePolling() {
+        if (this._usageTimerId) {
+            GLib.Source.remove(this._usageTimerId);
+            this._usageTimerId = 0;
+        }
+    }
+
+    _fetchUsage() {
+        if (!this._settings.usage_enabled) return;
+        const token = readOAuthToken();
+        if (!token) {
+            this._usage = null;
+            this._rebuildMenu();
+            return;
+        }
+        if (!this._soupSession)
+            this._soupSession = new Soup.Session();
+        const msg = Soup.Message.new('GET', 'https://api.anthropic.com/api/oauth/usage');
+        msg.request_headers.append('Authorization', `Bearer ${token}`);
+        msg.request_headers.append('anthropic-beta', 'oauth-2025-04-20');
+        this._soupSession.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (session, result) => {
+            try {
+                const bytes = session.send_and_read_finish(result);
+                const text = new TextDecoder().decode(bytes.get_data());
+                const json = JSON.parse(text);
+                this._usage = {
+                    fiveHour: normalizePercent(json?.five_hour?.utilization),
+                    sevenDay: normalizePercent(json?.seven_day?.utilization),
+                    fetchedAt: Date.now(),
+                };
+            } catch (e) {
+                console.error('claude-dash: usage fetch failed:', e.message);
+            }
+            this._rebuildMenu();
+        });
+    }
+
     _maybePlayTransitionSound(oldState, newState) {
         if (!this._settings.sound_enabled) return;
         if (newState === 'urgent' && oldState !== 'urgent' && !this._settings.auto_approve) {
@@ -374,6 +447,18 @@ const ClaudeDashButton = GObject.registerClass({
             });
         }
 
+        if (this._settings.usage_enabled && this._usage && (this._usage.fiveHour != null || this._usage.sevenDay != null)) {
+            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            const fh = this._usage.fiveHour != null ? `5h ${this._usage.fiveHour}%` : '';
+            const sd = this._usage.sevenDay != null ? `7d ${this._usage.sevenDay}%` : '';
+            const line = ['Usage · ' + [fh, sd].filter(Boolean).join('  ·  ')].join('');
+            const item = this._makeLabelItem(line, 'claude-menu-usage');
+            item.reactive = true;
+            item.can_focus = true;
+            item.connect('activate', () => this._fetchUsage());
+            this.menu.addMenuItem(item);
+        }
+
         if (this._history.length > 0)
             this._appendHistorySection();
 
@@ -408,6 +493,23 @@ const ClaudeDashButton = GObject.registerClass({
             saveSettings(this._settings);
         });
         this.menu.addMenuItem(toggleSound);
+
+        const toggleUsage = new PopupMenu.PopupSwitchMenuItem(
+            'Show Anthropic usage %',
+            this._settings.usage_enabled
+        );
+        toggleUsage.connect('toggled', (_item, state) => {
+            this._settings.usage_enabled = state;
+            saveSettings(this._settings);
+            if (state) {
+                this.startUsagePolling();
+            } else {
+                this.stopUsagePolling();
+                this._usage = null;
+                this._rebuildMenu();
+            }
+        });
+        this.menu.addMenuItem(toggleUsage);
 
         if (this._pending.size > 0 || this._approvals.size > 0) {
             const clearAll = new PopupMenu.PopupMenuItem('Clear all');
@@ -488,9 +590,14 @@ export default class ClaudeDashExtension extends Extension {
 
         this._dbus = Gio.DBusExportedObject.wrapJSObject(DBUS_IFACE, this);
         this._dbus.export(Gio.DBus.session, DBUS_OBJECT_PATH);
+
+        this._button.startUsagePolling();
     }
 
     disable() {
+        if (this._button) {
+            this._button.stopUsagePolling();
+        }
         if (this._dbus) {
             this._dbus.unexport();
             this._dbus = null;

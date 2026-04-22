@@ -60,3 +60,9 @@
     color: rgba(255, 255, 255, 0.75);
     padding: 2px 0;
 }
+
+.claude-menu-usage {
+    color: #cc785c;
+    font-size: 9pt;
+    padding: 2px 8px;
+}
