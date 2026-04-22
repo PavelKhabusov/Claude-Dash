@@ -359,6 +359,31 @@ const ClaudeDashButton = GObject.registerClass({
         return item;
     }
 
+    _makeHeaderRow(text, styleClass, actionEmoji, actionHandler) {
+        const item = new PopupMenu.PopupBaseMenuItem({ reactive: false, can_focus: false });
+        const box = new St.BoxLayout({ x_expand: true, style_class: 'claude-header-row' });
+        const label = new St.Label({
+            text,
+            style_class: styleClass,
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        label.clutter_text.set_line_wrap(true);
+        label.clutter_text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
+        box.add_child(label);
+        if (actionEmoji && actionHandler) {
+            const btn = new St.Button({
+                style_class: 'claude-header-action',
+                label: actionEmoji,
+                can_focus: true,
+            });
+            btn.connect('clicked', actionHandler);
+            box.add_child(btn);
+        }
+        item.add_child(box);
+        return item;
+    }
+
     _stateIcon(state) {
         if (state === 'urgent') return '⚠️';
         if (state === 'busy') return '⚡';
@@ -400,7 +425,12 @@ const ClaudeDashButton = GObject.registerClass({
                 if (pIdx > 0)
                     this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-                this.menu.addMenuItem(this._makeLabelItem(name, 'claude-section-header'));
+                this.menu.addMenuItem(this._makeHeaderRow(
+                    name,
+                    'claude-section-header',
+                    '⤴',
+                    () => this._focusWindow(data.cwd, name)
+                ));
 
                 const approvals = data.approvals.sort((a, b) => a[1].ts - b[1].ts);
                 for (const [rid, info] of approvals) {
@@ -440,10 +470,6 @@ const ClaudeDashButton = GObject.registerClass({
                     item.connect('activate', () => this.clearPending(sid));
                     this.menu.addMenuItem(item);
                 }
-
-                const focus = new PopupMenu.PopupMenuItem('Open VSCode window');
-                focus.connect('activate', () => this._focusWindow(data.cwd, name));
-                this.menu.addMenuItem(focus);
             });
         }
 
@@ -464,6 +490,8 @@ const ClaudeDashButton = GObject.registerClass({
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        const settings = new PopupMenu.PopupSubMenuMenuItem('⚙  Settings');
+
         const toggleApprovals = new PopupMenu.PopupSwitchMenuItem(
             'Intercept tool approvals',
             this._settings.approvals_enabled
@@ -472,7 +500,7 @@ const ClaudeDashButton = GObject.registerClass({
             this._settings.approvals_enabled = state;
             saveSettings(this._settings);
         });
-        this.menu.addMenuItem(toggleApprovals);
+        settings.menu.addMenuItem(toggleApprovals);
 
         const toggleAuto = new PopupMenu.PopupSwitchMenuItem(
             'Auto-approve every tool',
@@ -482,7 +510,7 @@ const ClaudeDashButton = GObject.registerClass({
             this._settings.auto_approve = state;
             saveSettings(this._settings);
         });
-        this.menu.addMenuItem(toggleAuto);
+        settings.menu.addMenuItem(toggleAuto);
 
         const toggleSound = new PopupMenu.PopupSwitchMenuItem(
             'Play sounds',
@@ -492,7 +520,7 @@ const ClaudeDashButton = GObject.registerClass({
             this._settings.sound_enabled = state;
             saveSettings(this._settings);
         });
-        this.menu.addMenuItem(toggleSound);
+        settings.menu.addMenuItem(toggleSound);
 
         const toggleUsage = new PopupMenu.PopupSwitchMenuItem(
             'Show Anthropic usage %',
@@ -509,18 +537,26 @@ const ClaudeDashButton = GObject.registerClass({
                 this._rebuildMenu();
             }
         });
-        this.menu.addMenuItem(toggleUsage);
+        settings.menu.addMenuItem(toggleUsage);
 
         if (this._pending.size > 0 || this._approvals.size > 0) {
-            const clearAll = new PopupMenu.PopupMenuItem('Clear all');
+            settings.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            const clearAll = new PopupMenu.PopupMenuItem('Clear all sessions');
             clearAll.connect('activate', () => this.clearAll());
-            this.menu.addMenuItem(clearAll);
+            settings.menu.addMenuItem(clearAll);
         }
+
+        this.menu.addMenuItem(settings);
     }
 
     _appendHistorySection() {
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this.menu.addMenuItem(this._makeLabelItem('History', 'claude-section-header'));
+        this.menu.addMenuItem(this._makeHeaderRow(
+            'History',
+            'claude-section-header',
+            '🗑',
+            () => { this._history = []; this._rebuildMenu(); }
+        ));
 
         const container = new PopupMenu.PopupBaseMenuItem({ reactive: false, can_focus: false });
         const scroll = new St.ScrollView({
@@ -548,13 +584,6 @@ const ClaudeDashButton = GObject.registerClass({
         scroll.add_child(box);
         container.add_child(scroll);
         this.menu.addMenuItem(container);
-
-        const clearHist = new PopupMenu.PopupMenuItem('Clear history');
-        clearHist.connect('activate', () => {
-            this._history = [];
-            this._rebuildMenu();
-        });
-        this.menu.addMenuItem(clearHist);
     }
 
     _focusWindow(cwd, project) {
