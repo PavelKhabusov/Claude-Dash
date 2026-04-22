@@ -586,7 +586,8 @@ const ClaudeDashButton = GObject.registerClass({
 export default class ClaudeDashExtension extends Extension {
     enable() {
         this._button = new ClaudeDashButton(this.path);
-        Main.panel.addToStatusArea('claude-dash', this._button);
+        // position=0, side='right' → leftmost slot of the right panel group
+        Main.panel.addToStatusArea('claude-dash', this._button, 0, 'right');
 
         this._dbus = Gio.DBusExportedObject.wrapJSObject(DBUS_IFACE, this);
         this._dbus.export(Gio.DBus.session, DBUS_OBJECT_PATH);
