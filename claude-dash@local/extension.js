@@ -105,8 +105,17 @@ const ClaudeDashButton = GObject.registerClass({
         this._settings = loadSettings();
         if (typeof this._settings.approvals_enabled !== 'boolean')
             this._settings.approvals_enabled = true;
-        if (typeof this._settings.auto_approve !== 'boolean')
-            this._settings.auto_approve = false;
+        // Migrate legacy bool `auto_approve` → per-category object
+        if (this._settings.auto_approve === true) {
+            this._settings.auto_approve = { read_bash: true, edit: true };
+        } else if (!this._settings.auto_approve || typeof this._settings.auto_approve !== 'object') {
+            this._settings.auto_approve = { read_bash: false, edit: false };
+        } else {
+            if (typeof this._settings.auto_approve.read_bash !== 'boolean')
+                this._settings.auto_approve.read_bash = false;
+            if (typeof this._settings.auto_approve.edit !== 'boolean')
+                this._settings.auto_approve.edit = false;
+        }
         if (typeof this._settings.sound_enabled !== 'boolean')
             this._settings.sound_enabled = true;
         if (typeof this._settings.usage_enabled !== 'boolean')
@@ -400,6 +409,17 @@ const ClaudeDashButton = GObject.registerClass({
         return item;
     }
 
+    _autoAllowCategory(category) {
+        const READ_BASH = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Bash']);
+        const EDIT = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+        const match = category === 'read_bash' ? READ_BASH : category === 'edit' ? EDIT : null;
+        if (!match) return;
+        for (const [rid, info] of [...this._approvals.entries()]) {
+            if (match.has(info.tool))
+                this._respondApproval(rid, 'allow');
+        }
+    }
+
     _rebuildMenu() {
         this.menu.removeAll();
 
@@ -513,9 +533,9 @@ const ClaudeDashButton = GObject.registerClass({
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        const settings = new PopupMenu.PopupSubMenuMenuItem('⚙  Settings');
+        const approvalsMenu = new PopupMenu.PopupSubMenuMenuItem('🛡  Approvals');
 
-        settings.menu.addMenuItem(this._makeToggle(
+        approvalsMenu.menu.addMenuItem(this._makeToggle(
             'Intercept tool approvals',
             this._settings.approvals_enabled,
             (_item, state) => {
@@ -524,18 +544,32 @@ const ClaudeDashButton = GObject.registerClass({
             }
         ));
 
-        settings.menu.addMenuItem(this._makeToggle(
-            'Auto-approve every tool',
-            this._settings.auto_approve,
+        approvalsMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        approvalsMenu.menu.addMenuItem(this._makeLabelItem('Auto-approve', 'claude-menu-sub'));
+
+        approvalsMenu.menu.addMenuItem(this._makeToggle(
+            'Read & Bash',
+            this._settings.auto_approve.read_bash,
             (_item, state) => {
-                this._settings.auto_approve = state;
+                this._settings.auto_approve.read_bash = state;
                 saveSettings(this._settings);
-                if (state) {
-                    for (const rid of [...this._approvals.keys()])
-                        this._respondApproval(rid, 'allow');
-                }
+                if (state) this._autoAllowCategory('read_bash');
             }
         ));
+
+        approvalsMenu.menu.addMenuItem(this._makeToggle(
+            'File edits',
+            this._settings.auto_approve.edit,
+            (_item, state) => {
+                this._settings.auto_approve.edit = state;
+                saveSettings(this._settings);
+                if (state) this._autoAllowCategory('edit');
+            }
+        ));
+
+        this.menu.addMenuItem(approvalsMenu);
+
+        const settings = new PopupMenu.PopupSubMenuMenuItem('⚙  Settings');
 
         settings.menu.addMenuItem(this._makeToggle(
             'Play sounds',

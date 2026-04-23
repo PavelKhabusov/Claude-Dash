@@ -60,9 +60,26 @@ def tray_approvals_enabled():
     return bool(_read_settings().get("approvals_enabled", True))
 
 
-def auto_approve_enabled():
-    """If on, hook returns 'allow' for every PreToolUse without blocking."""
-    return bool(_read_settings().get("auto_approve", False))
+READ_BASH_TOOLS = {"Read", "Grep", "Glob", "LS", "NotebookRead", "Bash"}
+EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+
+
+def auto_approve_for(tool_name):
+    """Return True if the user has auto-approve turned on for this tool's category.
+
+    Accepts the legacy `"auto_approve": true|false` (applies to every tool) as
+    well as the new `{"read_bash": bool, "edit": bool}` form.
+    """
+    val = _read_settings().get("auto_approve", False)
+    if isinstance(val, bool):
+        return val
+    if not isinstance(val, dict):
+        return False
+    if tool_name in READ_BASH_TOOLS:
+        return bool(val.get("read_bash"))
+    if tool_name in EDIT_TOOLS:
+        return bool(val.get("edit"))
+    return False
 
 
 def gv_str(s):
@@ -277,7 +294,7 @@ def handle_pretooluse(data):
     tool_input_dict = data.get("tool_input") or {}
     tool_input = summarize_tool_input(tool_input_dict)
 
-    if auto_approve_enabled():
+    if auto_approve_for(tool_name):
         # Tell the indicator we're doing something, then allow without asking.
         set_pending(session_id, project, cwd, tool_name, tool_input, "", "busy")
         sys.stdout.write(json.dumps({
