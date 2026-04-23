@@ -85,8 +85,9 @@ function readOAuthToken() {
 }
 
 function normalizePercent(v) {
+    // Endpoint already returns 0–100 floats (e.g. 1.0 = 1%, not 100%).
     if (typeof v !== 'number') return null;
-    return v <= 1.01 ? Math.round(v * 100) : Math.round(v);
+    return Math.round(v);
 }
 
 // Every load uses a fresh GTypeName so the extension can be reloaded in
