@@ -121,6 +121,8 @@ const ClaudeDashButton = GObject.registerClass({
             this._settings.sound_enabled = true;
         if (typeof this._settings.usage_enabled !== 'boolean')
             this._settings.usage_enabled = true;
+        if (typeof this._settings.history_enabled !== 'boolean')
+            this._settings.history_enabled = true;
 
         this._overallState = 'empty';
         this._usage = null;
@@ -297,7 +299,7 @@ const ClaudeDashButton = GObject.registerClass({
         }
     }
 
-    _fetchUsage() {
+    _fetchUsage(isRetry = false) {
         if (!this._settings.usage_enabled) return;
         const token = readOAuthToken();
         if (!token) {
@@ -311,6 +313,7 @@ const ClaudeDashButton = GObject.registerClass({
         msg.request_headers.append('Authorization', `Bearer ${token}`);
         msg.request_headers.append('anthropic-beta', 'oauth-2025-04-20');
         this._soupSession.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (session, result) => {
+            let haveData = false;
             try {
                 const bytes = session.send_and_read_finish(result);
                 const text = new TextDecoder().decode(bytes.get_data());
@@ -320,10 +323,17 @@ const ClaudeDashButton = GObject.registerClass({
                     sevenDay: normalizePercent(json?.seven_day?.utilization),
                     fetchedAt: Date.now(),
                 };
+                haveData = this._usage.fiveHour != null || this._usage.sevenDay != null;
             } catch (e) {
                 console.error('claude-dash: usage fetch failed:', e.message);
             }
             this._rebuildMenu();
+            if (!haveData && !isRetry) {
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => {
+                    this._fetchUsage(true);
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
         });
     }
 
@@ -529,7 +539,7 @@ const ClaudeDashButton = GObject.registerClass({
             this.menu.addMenuItem(item);
         }
 
-        if (this._history.length > 0)
+        if (this._settings.history_enabled && this._history.length > 0)
             this._appendHistorySection();
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -594,6 +604,16 @@ const ClaudeDashButton = GObject.registerClass({
                     this._usage = null;
                     this._rebuildMenu();
                 }
+            }
+        ));
+
+        settings.menu.addMenuItem(this._makeToggle(
+            'Show history',
+            this._settings.history_enabled,
+            (_item, state) => {
+                this._settings.history_enabled = state;
+                saveSettings(this._settings);
+                this._rebuildMenu();
             }
         ));
 
