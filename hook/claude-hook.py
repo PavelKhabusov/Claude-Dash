@@ -60,7 +60,10 @@ def tray_approvals_enabled():
     return bool(_read_settings().get("approvals_enabled", True))
 
 
-READ_BASH_TOOLS = {"Read", "Grep", "Glob", "LS", "NotebookRead", "Bash"}
+READ_BASH_TOOLS = {
+    "Read", "Grep", "Glob", "LS", "NotebookRead", "Bash",
+    "TodoWrite", "ToolSearch", "Task", "WebSearch", "WebFetch", "ExitPlanMode",
+}
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 
