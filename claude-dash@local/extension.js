@@ -459,6 +459,7 @@ const ClaudeDashButton = GObject.registerClass({
             'TodoWrite', 'ToolSearch', 'Agent', 'Task', 'WebSearch', 'WebFetch',
             'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode',
             'TaskOutput', 'TaskStop', 'Monitor', 'PushNotification',
+            'Workflow', 'StructuredOutput',
         ]);
         const READ_BASH_PREFIXES = ['mcp__playwright__'];
         const EDIT = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);

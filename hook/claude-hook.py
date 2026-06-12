@@ -65,6 +65,7 @@ READ_BASH_TOOLS = {
     "TodoWrite", "ToolSearch", "Agent", "Task", "WebSearch", "WebFetch",
     "AskUserQuestion", "EnterPlanMode", "ExitPlanMode",
     "TaskOutput", "TaskStop", "Monitor", "PushNotification",
+    "Workflow", "StructuredOutput",
 }
 READ_BASH_PREFIXES = ("mcp__playwright__",)
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
