@@ -21,6 +21,8 @@ the top bar without switching windows.
 - **Tray approvals** — on `PreToolUse` the hook blocks and asks you in the
   panel; ✅ Allow / ❌ Deny are sent back to Claude Code over a Unix socket.
   Falls back to Claude Code's inline UI on timeout.
+- **Auto-approve** — category switches for read-only/edit tools, plus a
+  per-tool always-allow list you can fill with one click from any prompt.
 - **Jump to window** — click "Open VSCode window" on any project to raise the
   matching VSCode window (matched by workspace name).
 - **Toggle off** — "Intercept tool approvals" switch in the menu disables the
@@ -100,6 +102,71 @@ inline UI (the VSCode panel).
 
 State is persisted to `~/.config/claude-dash/settings.json` and read by the
 hook on every invocation, so toggling takes effect immediately.
+
+### Auto-approve
+
+Tools can be allowed without asking, in two ways. The 🛡 Approvals submenu has
+two category switches — **Read & Bash** (read-only and non-destructive built-ins)
+and **File edits** (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`) — and below
+them an **⚡ Always allowed** list of individual tools.
+
+To add to that list without opening settings, click **⚡** in the Allow/Deny row
+of any pending approval. It allows the current request and remembers the tool,
+so it never asks again. Remove entries with **✕** next to them in the submenu.
+
+#### Editing the list by hand (or with an agent)
+
+The list lives in `~/.config/claude-dash/settings.json` under
+`auto_approve.tools` — a flat array of strings. Each entry is either an exact
+tool name or a prefix ending in `*`:
+
+```json
+{
+  "approvals_enabled": true,
+  "auto_approve": {
+    "read_bash": true,
+    "edit": true,
+    "tools": [
+      "mcp__pixel-guard__*",
+      "mcp__figma__get_screenshot",
+      "mcp__figma__get_design_context"
+    ]
+  }
+}
+```
+
+`"mcp__pixel-guard__*"` allows every tool on that MCP server; the two `figma`
+entries allow only those tools. Prefer exact names for servers that mix
+read-only and mutating tools — a `*` on `mcp__figma__` would also allow
+`create_new_file`, `use_figma` and `upload_assets`.
+
+Tool names are the ones shown in the approval row and in History, e.g.
+`mcp__figma__get_screenshot`. The hook re-reads the file on every invocation,
+so edits take effect on the next tool call — no reload needed.
+
+**Caveat when the shell is running.** The extension reads this file once at
+startup and rewrites it whenever you flip a switch in the menu. So if you edit
+the file while GNOME Shell is up, your changes are live for the hook, but the
+menu still shows the old list and will overwrite your edits the next time you
+touch a toggle. To make hand-edits stick in the UI too, restart the shell
+(Wayland: log out/in; X11: `Alt+F2 → r`) — or just skip the file and use the
+⚡ button.
+
+An agent editing this file should merge into the existing array rather than
+replacing the object, to avoid dropping the other keys:
+
+```bash
+python3 - <<'EOF'
+import json, os
+p = os.path.expanduser("~/.config/claude-dash/settings.json")
+s = json.load(open(p))
+tools = s.setdefault("auto_approve", {}).setdefault("tools", [])
+for t in ["mcp__figma__get_metadata", "mcp__playwright__*"]:
+    if t not in tools:
+        tools.append(t)
+json.dump(s, open(p, "w"), indent=2)
+EOF
+```
 
 ## Architecture
 

@@ -117,6 +117,8 @@ const ClaudeDashButton = GObject.registerClass({
             if (typeof this._settings.auto_approve.edit !== 'boolean')
                 this._settings.auto_approve.edit = false;
         }
+        if (!Array.isArray(this._settings.auto_approve.tools))
+            this._settings.auto_approve.tools = [];
         if (typeof this._settings.sound_enabled !== 'boolean')
             this._settings.sound_enabled = true;
         if (typeof this._settings.usage_enabled !== 'boolean')
@@ -453,6 +455,11 @@ const ClaudeDashButton = GObject.registerClass({
         return item;
     }
 
+    _inToolsList(tool) {
+        return this._settings.auto_approve.tools.some(
+            t => t === tool || (t.endsWith('*') && tool.startsWith(t.slice(0, -1))));
+    }
+
     _autoAllowCategory(category) {
         const READ_BASH = new Set([
             'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Bash',
@@ -460,11 +467,13 @@ const ClaudeDashButton = GObject.registerClass({
             'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode',
             'TaskOutput', 'TaskStop', 'Monitor', 'PushNotification',
             'Workflow', 'StructuredOutput',
+            'ReadMcpResourceTool', 'ReadMcpResourceDirTool', 'ListMcpResourcesTool',
         ]);
         const READ_BASH_PREFIXES = ['mcp__playwright__'];
         const EDIT = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
         const matchesReadBash = (tool) =>
-            READ_BASH.has(tool) || READ_BASH_PREFIXES.some(p => tool.startsWith(p));
+            READ_BASH.has(tool) || READ_BASH_PREFIXES.some(p => tool.startsWith(p))
+            || this._inToolsList(tool);
         const matches = category === 'read_bash'
             ? matchesReadBash
             : category === 'edit' ? (tool) => EDIT.has(tool) : null;
@@ -473,6 +482,23 @@ const ClaudeDashButton = GObject.registerClass({
             if (matches(info.tool))
                 this._respondApproval(rid, 'allow');
         }
+    }
+
+    _autoAllowTool(tool) {
+        if (!tool) return;
+        if (!this._inToolsList(tool)) {
+            this._settings.auto_approve.tools.push(tool);
+            saveSettings(this._settings);
+        }
+        let responded = false;
+        for (const [rid, info] of [...this._approvals.entries()]) {
+            if (info.tool === tool) {
+                this._respondApproval(rid, 'allow');
+                responded = true;
+            }
+        }
+        if (!responded)
+            this._rebuildMenu();
     }
 
     _rebuildMenu() {
@@ -542,6 +568,15 @@ const ClaudeDashButton = GObject.registerClass({
                     deny.connect('clicked', () => this._respondApproval(rid, 'deny'));
                     box.add_child(allow);
                     box.add_child(deny);
+                    if (info.tool) {
+                        const always = new St.Button({
+                            label: '⚡',
+                            can_focus: true,
+                            style_class: 'claude-approval-button claude-approval-always',
+                        });
+                        always.connect('clicked', () => this._autoAllowTool(info.tool));
+                        box.add_child(always);
+                    }
                     row.add_child(box);
                     this.menu.addMenuItem(row);
                 }
@@ -621,6 +656,20 @@ const ClaudeDashButton = GObject.registerClass({
                 if (state) this._autoAllowCategory('edit');
             }
         ));
+
+        if (this._settings.auto_approve.tools.length > 0) {
+            approvalsMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            approvalsMenu.menu.addMenuItem(this._makeLabelItem('⚡ Always allowed', 'claude-menu-sub'));
+            for (const tool of this._settings.auto_approve.tools) {
+                const row = this._makeHeaderRow(tool, 'claude-menu-tool', '✕', () => {
+                    this._settings.auto_approve.tools =
+                        this._settings.auto_approve.tools.filter(t => t !== tool);
+                    saveSettings(this._settings);
+                    row.destroy();
+                });
+                approvalsMenu.menu.addMenuItem(row);
+            }
+        }
 
         this.menu.addMenuItem(approvalsMenu);
 

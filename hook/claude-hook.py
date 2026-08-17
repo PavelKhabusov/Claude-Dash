@@ -66,6 +66,7 @@ READ_BASH_TOOLS = {
     "AskUserQuestion", "EnterPlanMode", "ExitPlanMode",
     "TaskOutput", "TaskStop", "Monitor", "PushNotification",
     "Workflow", "StructuredOutput",
+    "ReadMcpResourceTool", "ReadMcpResourceDirTool", "ListMcpResourcesTool",
 }
 READ_BASH_PREFIXES = ("mcp__playwright__",)
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
@@ -75,13 +76,22 @@ def auto_approve_for(tool_name):
     """Return True if the user has auto-approve turned on for this tool's category.
 
     Accepts the legacy `"auto_approve": true|false` (applies to every tool) as
-    well as the new `{"read_bash": bool, "edit": bool}` form.
+    well as the new `{"read_bash": bool, "edit": bool, "tools": [...]}` form.
+    `tools` is a user-curated always-allow list: exact tool names, or a
+    trailing `*` for a prefix match (e.g. "mcp__foo__*").
     """
     val = _read_settings().get("auto_approve", False)
     if isinstance(val, bool):
         return val
     if not isinstance(val, dict):
         return False
+    tools = val.get("tools")
+    if isinstance(tools, list):
+        for t in tools:
+            if not isinstance(t, str):
+                continue
+            if t == tool_name or (t.endswith("*") and tool_name.startswith(t[:-1])):
+                return True
     if tool_name in READ_BASH_TOOLS or tool_name.startswith(READ_BASH_PREFIXES):
         return bool(val.get("read_bash"))
     if tool_name in EDIT_TOOLS:
