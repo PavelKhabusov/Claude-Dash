@@ -1,16 +1,23 @@
+<div align="center">
+
+<img src="claude-dash@local/icons/claude-active.svg" width="96" alt="Claude Dash">
+
 # Claude Dash
 
-[![GNOME Shell](https://img.shields.io/badge/GNOME_Shell-45%E2%80%9349-4A86CF?style=flat-square&logo=gnome&logoColor=white)](https://www.gnome.org/)
-[![Wayland](https://img.shields.io/badge/Wayland-ready-success?style=flat-square)](https://wayland.freedesktop.org)
-[![Claude Code](https://img.shields.io/badge/Claude_Code-companion-CC785C?style=flat-square)](https://claude.com/claude-code)
-[![Platform](https://img.shields.io/badge/platform-Linux-blue?style=flat-square&logo=linux&logoColor=white)](https://www.linuxfoundation.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow?style=flat-square)](LICENSE)
-[![VSCode](https://img.shields.io/badge/VSCode-extension%20companion-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white)](https://code.visualstudio.com/)
+**GNOME Shell indicator for [Claude Code](https://claude.com/claude-code) in VS Code** — activity and permission
+prompts from every active session across projects; approve or deny tools right from the top bar.
 
-A GNOME Shell panel indicator for [Claude Code](https://claude.com/claude-code)
-running in VSCode. Surfaces activity and permission prompts from every
-active Claude Code session across projects — approve or deny tools right from
-the top bar without switching windows.
+![Status](https://img.shields.io/badge/status-active-2ea043)
+![Platform](https://img.shields.io/badge/platform-Linux%20%C2%B7%20Wayland-1f1f1f)
+![License](https://img.shields.io/badge/license-MIT-7ba7d4)
+
+![GNOME Shell](https://img.shields.io/badge/GNOME%20Shell-45%E2%80%9350-4A86CF?logo=gnome&logoColor=white)
+![GJS](https://img.shields.io/badge/GJS-ESM-F7DF1E?logo=javascript&logoColor=black)
+![Claude Code](https://img.shields.io/badge/Claude%20Code-companion-CC785C)
+
+</div>
+
+---
 
 ## Features
 
