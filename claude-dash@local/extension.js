@@ -90,6 +90,23 @@ function normalizePercent(v) {
     return Math.round(v);
 }
 
+// Per-model weekly caps (Fable, Opus, …) arrive as `weekly_scoped` entries in
+// `limits`, named only by scope.model.display_name — the dedicated
+// seven_day_<model> fields stay null.
+function scopedLimits(json) {
+    const out = [];
+    const limits = json?.limits;
+    if (!Array.isArray(limits)) return out;
+    for (const l of limits) {
+        if (l?.kind !== 'weekly_scoped') continue;
+        const name = l?.scope?.model?.display_name;
+        const pct = normalizePercent(l?.percent);
+        if (typeof name === 'string' && name && pct != null)
+            out.push({ name, pct });
+    }
+    return out;
+}
+
 // Every load uses a fresh GTypeName so the extension can be reloaded in
 // place without triggering "type already registered" errors.
 const _GTYPE_SUFFIX = Date.now().toString(36);
@@ -334,9 +351,11 @@ const ClaudeDashButton = GObject.registerClass({
                 this._usage = {
                     fiveHour: normalizePercent(json?.five_hour?.utilization),
                     sevenDay: normalizePercent(json?.seven_day?.utilization),
+                    scoped: scopedLimits(json),
                     fetchedAt: Date.now(),
                 };
-                haveData = this._usage.fiveHour != null || this._usage.sevenDay != null;
+                haveData = this._usage.fiveHour != null || this._usage.sevenDay != null
+                    || this._usage.scoped.length > 0;
             } catch (e) {
                 console.error('claude-dash: usage fetch failed:', e.message);
             }
@@ -606,11 +625,14 @@ const ClaudeDashButton = GObject.registerClass({
             });
         }
 
-        if (this._settings.usage_enabled && this._usage && (this._usage.fiveHour != null || this._usage.sevenDay != null)) {
+        const scoped = this._usage?.scoped || [];
+        if (this._settings.usage_enabled && this._usage
+            && (this._usage.fiveHour != null || this._usage.sevenDay != null || scoped.length > 0)) {
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
             const fh = this._usage.fiveHour != null ? `5h ${this._usage.fiveHour}%` : '';
             const sd = this._usage.sevenDay != null ? `7d ${this._usage.sevenDay}%` : '';
-            const line = ['Usage · ' + [fh, sd].filter(Boolean).join('  ·  ')].join('');
+            const parts = [fh, sd, ...scoped.map(s => `${s.name} ${s.pct}%`)];
+            const line = 'Usage · ' + parts.filter(Boolean).join('  ·  ');
             const item = this._makeLabelItem(line, 'claude-menu-usage');
             item.reactive = true;
             item.can_focus = true;
