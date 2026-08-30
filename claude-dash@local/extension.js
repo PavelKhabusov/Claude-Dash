@@ -90,6 +90,23 @@ function normalizePercent(v) {
     return Math.round(v);
 }
 
+function resetsAt(iso) {
+    if (typeof iso !== 'string' || !iso) return null;
+    const t = Date.parse(iso);
+    return Number.isFinite(t) ? t : null;
+}
+
+// "2h" / "45m" / "3d" — coarse on purpose, the line has no room for more.
+function formatResets(ts) {
+    if (ts == null) return '';
+    const mins = Math.round((ts - Date.now()) / 60000);
+    if (mins <= 0) return 'now';
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours}h`;
+    return `${Math.round(hours / 24)}d`;
+}
+
 // Per-model weekly caps (Fable, Opus, …) arrive as `weekly_scoped` entries in
 // `limits`, named only by scope.model.display_name — the dedicated
 // seven_day_<model> fields stay null.
@@ -102,7 +119,7 @@ function scopedLimits(json) {
         const name = l?.scope?.model?.display_name;
         const pct = normalizePercent(l?.percent);
         if (typeof name === 'string' && name && pct != null)
-            out.push({ name, pct });
+            out.push({ name, pct, resets: resetsAt(l?.resets_at) });
     }
     return out;
 }
@@ -174,6 +191,11 @@ const ClaudeDashButton = GObject.registerClass({
         box.add_child(this._badge);
         box.add_child(this._dot);
         this.add_child(box);
+
+        // Reset countdowns are computed at build time, so refresh on open.
+        this.menu.connect('open-state-changed', (_menu, isOpen) => {
+            if (isOpen) this._rebuildMenu();
+        });
 
         this._rebuildMenu();
     }
@@ -350,7 +372,9 @@ const ClaudeDashButton = GObject.registerClass({
                 const json = JSON.parse(text);
                 this._usage = {
                     fiveHour: normalizePercent(json?.five_hour?.utilization),
+                    fiveHourResets: resetsAt(json?.five_hour?.resets_at),
                     sevenDay: normalizePercent(json?.seven_day?.utilization),
+                    sevenDayResets: resetsAt(json?.seven_day?.resets_at),
                     scoped: scopedLimits(json),
                     fetchedAt: Date.now(),
                 };
@@ -629,9 +653,15 @@ const ClaudeDashButton = GObject.registerClass({
         if (this._settings.usage_enabled && this._usage
             && (this._usage.fiveHour != null || this._usage.sevenDay != null || scoped.length > 0)) {
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-            const fh = this._usage.fiveHour != null ? `5h ${this._usage.fiveHour}%` : '';
-            const sd = this._usage.sevenDay != null ? `7d ${this._usage.sevenDay}%` : '';
-            const parts = [fh, sd, ...scoped.map(s => `${s.name} ${s.pct}%`)];
+            const withReset = (text, ts) => {
+                const r = formatResets(ts);
+                return r ? `${text} ⟳${r}` : text;
+            };
+            const fh = this._usage.fiveHour != null
+                ? withReset(`5h ${this._usage.fiveHour}%`, this._usage.fiveHourResets) : '';
+            const sd = this._usage.sevenDay != null
+                ? withReset(`7d ${this._usage.sevenDay}%`, this._usage.sevenDayResets) : '';
+            const parts = [fh, sd, ...scoped.map(s => withReset(`${s.name} ${s.pct}%`, s.resets))];
             const line = 'Usage · ' + parts.filter(Boolean).join('  ·  ');
             const item = this._makeLabelItem(line, 'claude-menu-usage');
             item.reactive = true;
