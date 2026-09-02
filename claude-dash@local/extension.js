@@ -655,7 +655,7 @@ const ClaudeDashButton = GObject.registerClass({
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
             const withReset = (text, ts) => {
                 const r = formatResets(ts);
-                return r ? `${text} ⟳${r}` : text;
+                return r ? `${text} (${r})` : text;
             };
             const fh = this._usage.fiveHour != null
                 ? withReset(`5h ${this._usage.fiveHour}%`, this._usage.fiveHourResets) : '';
